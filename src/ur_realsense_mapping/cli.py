@@ -56,7 +56,10 @@ from ur_realsense_mapping.poses import (
 
 def parse_args():
     parser = argparse.ArgumentParser(description="RealSense volumetric mapping with cuRobo")
-    parser.add_argument("--source", choices=["bag", "ros2"], default="bag", help="Frame source")
+    parser.add_argument(
+        "--source", choices=["bag", "ros2", "live"], default="bag",
+        help="Frame source: .bag file, ROS 2 topics, or a connected RealSense",
+    )
     parser.add_argument("--bag", type=str, default=None, help="Path to a RealSense .bag recording")
     parser.add_argument(
         "--depth-topic", type=str, default="/camera/camera/aligned_depth_to_color/image_raw"
@@ -150,6 +153,13 @@ def make_source(args):
             f"| depth scale: {bag.depth_scale:.6f} | gyro: {bag.has_gyro}"
         )
         return ((d, c, k, None, g) for d, c, k, g in bag)
+
+    if args.source == "live":
+        from ur_realsense_mapping.realsense_bag import RealsenseLive
+
+        cam = RealsenseLive(color=not args.depth_only)
+        print(f"  device: {cam.device_name} | live | gyro: {cam.has_gyro}")
+        return ((d, c, k, None, g) for d, c, k, g in cam)
 
     from ur_realsense_mapping.ros2_source import Ros2TopicSource
 
@@ -302,7 +312,17 @@ def main():
         yield depth0, rgb0, intr0, pose0, gyro0
         yield from frame_iter
 
-    for raw_idx, (depth_np, rgb_np, _, tf_pose, gyro_samples) in enumerate(all_frames()):
+    frames = enumerate(all_frames())
+    while True:
+        # Ctrl+C during a live session ends integration but still runs the
+        # ESDF / mesh-export / viewer stages below.
+        try:
+            raw_idx, (depth_np, rgb_np, _, tf_pose, gyro_samples) = next(frames)
+        except StopIteration:
+            break
+        except KeyboardInterrupt:
+            print("\nStopping integration (keyboard interrupt).")
+            break
         # Accumulate gyro before the stride check so strided-out frames still
         # contribute their rotation.
         if args.pose_source == "track" and not args.no_gyro and gyro_samples:

@@ -124,3 +124,58 @@ class RealsenseBag:
         if self._intrinsics is None:
             raise RuntimeError("intrinsics unavailable until the first frame is read")
         return self._intrinsics
+
+
+class RealsenseLive(RealsenseBag):
+    """Same frame interface as :class:`RealsenseBag`, from a connected camera.
+
+    Streams depth + color (+ gyro on IMU-equipped models like the D435i) and
+    yields ``(depth_m, rgb, intrinsics_3x3, gyro_samples)`` until the caller
+    stops iterating.
+    """
+
+    def __init__(
+        self,
+        color: bool = True,
+        depth_size: "tuple[int, int]" = (848, 480),
+        color_size: "tuple[int, int]" = (1280, 720),
+        fps: int = 30,
+    ):
+        if rs is None:
+            raise RuntimeError(
+                "pyrealsense2 is required for live capture. Install with "
+                "`pip install 'ur_realsense_mapping[realsense]'`."
+            )
+        self._want_color = color
+        self._pipeline = rs.pipeline()
+        config = rs.config()
+        config.enable_stream(rs.stream.depth, *depth_size, rs.format.z16, fps)
+        if color:
+            config.enable_stream(rs.stream.color, *color_size, rs.format.rgb8, fps)
+        # Enable the gyro when present so ICP tracking gets a rotation prior.
+        ctx = rs.context()
+        devices = ctx.query_devices()
+        if len(devices) == 0:
+            raise RuntimeError("no RealSense device connected")
+        self.has_gyro = any(
+            s.stream_type() == rs.stream.gyro
+            for sensor in devices[0].query_sensors()
+            for s in sensor.get_stream_profiles()
+        )
+        if self.has_gyro:
+            config.enable_stream(rs.stream.gyro, rs.format.motion_xyz32f, 200)
+
+        profile = self._pipeline.start(config)
+        device = profile.get_device()
+        self.duration_s = float("inf")
+        self.device_name = (
+            device.get_info(rs.camera_info.name)
+            if device.supports(rs.camera_info.name)
+            else "unknown"
+        )
+        self.depth_scale = device.first_depth_sensor().get_depth_scale()
+
+        self._align = rs.align(rs.stream.depth) if color else None
+        self._intrinsics = None
+        self.image_height = None
+        self.image_width = None

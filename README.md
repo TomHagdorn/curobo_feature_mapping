@@ -31,6 +31,21 @@ the node still maps and answers feature queries; scene publishing is disabled).
 For bag-only usage any Python ≥3.10 venv works, e.g. the existing
 `/home/tsp_th/curobo/.venv` (3.11).
 
+## Quick start: live camera, no ROS needed
+
+With a RealSense connected via USB (gyro prior active on IMU models;
+stop with Ctrl+C — the mesh still gets saved):
+
+```bash
+ur-rs-map --source live \
+    --voxel-size 0.015 --truncation-distance 0.12 --max-track-error 0.08 \
+    --initial-pose 0 0 0 0.5 -0.5 0.5 -0.5 --grid-center 2 0 0 \
+    --visualize
+```
+
+Hold the camera level when starting (the initial pose anchors the world
+upright), then move slowly and deliberately.
+
 ## Quick start: map from a .bag recording
 
 ```bash
