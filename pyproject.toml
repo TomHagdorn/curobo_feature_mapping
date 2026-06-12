@@ -8,7 +8,9 @@ version = "0.1.0"
 description = "Volumetric mapping with cuRobo from a RealSense camera (bag file or ROS 2 topics) on a UR robot"
 requires-python = ">=3.10"
 dependencies = [
-    "nvidia-curobo",
+    # [cu13] matches the CUDA of PyPI's default torch wheels (2.12 = cu130) and
+    # pulls cuda-core, which curobo's kernel backend needs at runtime.
+    "nvidia-curobo[cu13]",
     "numpy",
     "torch",
     "tqdm",

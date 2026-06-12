@@ -16,7 +16,7 @@ For ROS 2 mode the venv Python **must match the ROS distro's Python**
 ```bash
 cd ~/workspaces/isaac_ros-dev/src/ur_realsense_mapping
 uv venv --python /usr/bin/python3.12 .venv
-uv pip install -e ../curobo -e '.[realsense,moveit]' --python .venv/bin/python
+uv pip install -e '../curobo[cu13]' -e '.[realsense,moveit]' --python .venv/bin/python
 ```
 
 Run ROS-facing commands with ROS sourced:
