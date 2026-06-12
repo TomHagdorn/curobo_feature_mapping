@@ -122,11 +122,15 @@ class CuroboMapPublisher(Node):
         self._matches_pub = self.create_publisher(PointCloud2, "~/feature_matches", 1)
         self._centroid_pub = self.create_publisher(PointStamped, "~/feature_centroid", 1)
 
+        # Sensor-data QoS: best-effort subscriber matches both reliable and
+        # best-effort publishers (camera drivers and bag replays).
+        from rclpy.qos import qos_profile_sensor_data as qos
+
         sync = ApproximateTimeSynchronizer(
             [
-                Subscriber(self, Image, self.get_parameter("depth_topic").value),
-                Subscriber(self, CameraInfo, self.get_parameter("info_topic").value),
-                Subscriber(self, Image, self.get_parameter("color_topic").value),
+                Subscriber(self, Image, self.get_parameter("depth_topic").value, qos_profile=qos),
+                Subscriber(self, CameraInfo, self.get_parameter("info_topic").value, qos_profile=qos),
+                Subscriber(self, Image, self.get_parameter("color_topic").value, qos_profile=qos),
             ],
             queue_size=30,
             slop=0.05,

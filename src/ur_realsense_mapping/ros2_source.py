@@ -36,10 +36,12 @@ class Ros2TopicSource:
         queue_size: int = 30,
         slop_s: float = 0.05,
         timeout_s: float = 10.0,
+        first_frame_timeout_s: float = 120.0,
     ):
         import rclpy
         from message_filters import ApproximateTimeSynchronizer, Subscriber
         from rclpy.node import Node
+        from rclpy.qos import qos_profile_sensor_data
         from sensor_msgs.msg import CameraInfo, Image
 
         self._rclpy = rclpy
@@ -47,6 +49,7 @@ class Ros2TopicSource:
         self._world_frame = world_frame
         self._camera_frame = camera_frame
         self._timeout_s = timeout_s
+        self._first_frame_timeout_s = first_frame_timeout_s
         self._queue: list = []
 
         if not rclpy.ok():
@@ -60,12 +63,16 @@ class Ros2TopicSource:
             self._tf_buffer = Buffer()
             self._tf_listener = TransformListener(self._tf_buffer, self._node)
 
+        # Sensor-data QoS (best effort): matches both reliable and best-effort
+        # publishers; a reliable subscriber would get nothing from best-effort
+        # camera drivers / bag replays.
+        qos = qos_profile_sensor_data
         subs = [
-            Subscriber(self._node, Image, depth_topic),
-            Subscriber(self._node, CameraInfo, info_topic),
+            Subscriber(self._node, Image, depth_topic, qos_profile=qos),
+            Subscriber(self._node, CameraInfo, info_topic, qos_profile=qos),
         ]
         if color:
-            subs.append(Subscriber(self._node, Image, color_topic))
+            subs.append(Subscriber(self._node, Image, color_topic, qos_profile=qos))
         self._sync = ApproximateTimeSynchronizer(subs, queue_size, slop_s)
         self._sync.registerCallback(self._on_frames)
 
@@ -120,12 +127,17 @@ class Ros2TopicSource:
 
         try:
             last_frame_t = time.monotonic()
+            got_first = False
             while self._rclpy.ok():
                 self._rclpy.spin_once(self._node, timeout_sec=0.1)
                 while self._queue:
                     last_frame_t = time.monotonic()
+                    got_first = True
                     yield self._queue.pop(0)
-                if time.monotonic() - last_frame_t > self._timeout_s:
+                # Generous timeout before the first frame (driver/replay may
+                # not be running yet), short one afterwards (bag finished).
+                limit = self._timeout_s if got_first else self._first_frame_timeout_s
+                if time.monotonic() - last_frame_t > limit:
                     break  # no frames arriving (bag finished / driver stopped)
         finally:
             self._node.destroy_node()
