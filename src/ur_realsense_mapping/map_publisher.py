@@ -87,6 +87,7 @@ class CuroboMapPublisher(Node):
         p("query_prompt", "")
         p("query_top_k", 200)
         p("query_min_score", 0.05)
+        p("query_save_path", "")  # non-empty: write matched voxels as PLY per query
 
         self._device = torch.device(self.get_parameter("device").value)
         self._device_cfg = DeviceCfg(device=self._device)
@@ -353,6 +354,13 @@ class CuroboMapPublisher(Node):
         centroid = centers.mean(axis=0)
         result["centroid"] = [round(float(c), 4) for c in centroid]
 
+        save_path = self.get_parameter("query_save_path").value
+        if save_path:
+            colors = matched.voxels.colors_uint8().cpu().numpy()
+            path = save_path.replace("{prompt}", prompt.replace(" ", "_"))
+            self._save_matches_ply(path, centers, colors, scores)
+            result["saved"] = path
+
         stamp = self.get_clock().now().to_msg()
         fields = [
             PointField(name=n, offset=4 * i, datatype=PointField.FLOAT32, count=1)
@@ -368,6 +376,20 @@ class CuroboMapPublisher(Node):
         pt.point.x, pt.point.y, pt.point.z = (float(c) for c in centroid)
         self._centroid_pub.publish(pt)
         return result
+
+    @staticmethod
+    def _save_matches_ply(path: str, centers, colors, scores):
+        """ASCII PLY of matched voxel centers with color and per-voxel score."""
+        with open(path, "w") as f:
+            f.write(
+                "ply\nformat ascii 1.0\n"
+                f"element vertex {len(centers)}\n"
+                "property float x\nproperty float y\nproperty float z\n"
+                "property uchar red\nproperty uchar green\nproperty uchar blue\n"
+                "property float score\nend_header\n"
+            )
+            for (x, y, z), (r, g, b), s in zip(centers, colors, scores):
+                f.write(f"{x:.4f} {y:.4f} {z:.4f} {r} {g} {b} {s:.4f}\n")
 
     def _srv_query_features(self, _request, response):
         result = self._run_query(self.get_parameter("query_prompt").value)
