@@ -77,6 +77,11 @@ def parse_args():
     )
     parser.add_argument("--voxel-size", type=float, default=0.02, help="TSDF voxel size (m)")
     parser.add_argument(
+        "--force-voxel-size",
+        action="store_true",
+        help="Allow voxel sizes below 5 mm despite the memory cost",
+    )
+    parser.add_argument(
         "--truncation-distance",
         type=float,
         default=None,
@@ -180,6 +185,15 @@ def main():
     args = parse_args()
     if args.pose_source == "tf" and args.source != "ros2":
         raise ValueError("--pose-source tf is only available with --source ros2")
+    if args.voxel_size < 0.005:
+        if not args.force_voxel_size:
+            raise SystemExit(
+                f"--voxel-size {args.voxel_size} is {args.voxel_size * 1000:g} mm — below "
+                "RealSense depth noise (>2 mm) and a likely typo (0.0015 vs 0.015). "
+                "Memory scales with the cube of resolution; use 0.01-0.02. "
+                "Pass --force-voxel-size to override."
+            )
+        print(f"WARNING: voxel_size {args.voxel_size} m is below sensor noise; expect huge memory use.")
     device = torch.device(args.device)
     device_cfg = DeviceCfg(device=device)
 
