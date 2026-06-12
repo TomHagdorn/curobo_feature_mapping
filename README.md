@@ -45,38 +45,35 @@ ur-rs-map --source bag --bag ~/Documents/20260211_150520.bag \
 Useful flags: `--no-gyro` (disable the IMU prior), `--stride N`,
 `--depth-only`, `--output mesh.ply`, `--extent X Y Z`, `--grid-center X Y Z`.
 
-## Live ROS 2: arm-mounted camera with TF poses
+## Live ROS 2: poses from TF
 
-This is the target setup: per-frame camera poses come from TF
-(UR forward kinematics + hand-eye calibration) instead of ICP tracking.
+The mapper plugs into whatever setup you already run — it makes no
+assumptions about the robot. It only needs, from your system:
 
-Terminal 1 — UR driver (publishes TF `base_link → tool0`):
+1. **Topics**: a depth image aligned to the color intrinsics, the color
+   image, and its camera_info (with realsense2_camera that means
+   `align_depth.enable:=true`).
+2. **TF**: a connected chain from your world frame to the camera optical
+   frame at the image timestamps. On an arm-mounted camera that chain is
+   robot FK plus a static hand-eye transform — published by your own
+   launch setup.
+
+Start your setup as usual, point the parameters at it, and run the mapper
+(ROS sourced + the py3.12 venv active):
 
 ```bash
-ros2 launch ur_robot_driver ur_control.launch.py \
-    ur_type:=ur5e robot_ip:=<ROBOT_IP>
+ur-rs-map-publisher --ros-args --params-file config/map_publisher.yaml
 ```
 
-Terminal 2 — RealSense driver with depth aligned to color:
+Copy [config/map_publisher.yaml](config/map_publisher.yaml) into your own
+config directory and set `world_frame`, `camera_frame`, and the three topic
+names to match your system; anything can still be overridden ad hoc with
+`-p name:=value`.
+
+The interactive CLI works against the same setup, with flags instead of
+parameters:
 
 ```bash
-ros2 launch realsense2_camera rs_launch.py \
-    align_depth.enable:=true pointcloud.enable:=false
-```
-
-Terminal 3 — hand-eye calibration as a static TF
-(`x y z qx qy qz qw` from your calibration, flange → camera optical frame):
-
-```bash
-ros2 run tf2_ros static_transform_publisher \
-    --x 0.05 --y 0.0 --z 0.06 --qx 0 --qy 0 --qz 0 --qw 1 \
-    --frame-id tool0 --child-frame-id camera_color_optical_frame
-```
-
-Terminal 4 — the mapper (same venv, ROS sourced):
-
-```bash
-source /opt/ros/humble/setup.bash
 ur-rs-map --source ros2 --pose-source tf \
     --world-frame base_link --camera-frame camera_color_optical_frame \
     --visualize
