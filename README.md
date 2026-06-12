@@ -78,8 +78,35 @@ ur-rs-map --source ros2 --pose-source tf \
     --visualize
 ```
 
-Replaying a ros2 bag instead of the live driver works identically:
-`ros2 bag play <bag_dir> --clock` (TF must be in the bag or published alongside).
+## Recording a bag on the moving robot
+
+Use **ros2 bag** (not realsense-viewer's native .bag — that format cannot
+contain TF). Record while drivers + the hand-eye static TF are running:
+
+```bash
+ros2 bag record -o ur_scan_$(date +%Y%m%d_%H%M%S) \
+    /camera/camera/aligned_depth_to_color/image_raw \
+    /camera/camera/color/image_raw \
+    /camera/camera/color/camera_info \
+    /tf /tf_static /joint_states
+```
+
+- `/tf` + `/tf_static` carry the full pose chain (UR FK + hand-eye); TF is
+  interpolated at each image stamp, so exact rates don't need to match.
+- `/joint_states` is a cheap insurance: poses can be recomputed via FK later
+  if the TF tree was wrong during recording (e.g. missing hand-eye).
+- Depth+color at 30 fps is heavy (~100 MB/s uncompressed); drop the camera to
+  15 fps or record `.../compressed` topics if disk becomes the bottleneck.
+
+Replay and map:
+
+```bash
+ros2 bag play ur_scan_*/ --clock
+ur-rs-map --source ros2 --pose-source tf --world-frame base_link --visualize
+```
+
+If TF lookups fail during replay, slow it down (`--rate 0.5`) — the mapper
+processes frames as they arrive and drops what it can't pose.
 
 Default topics match the realsense2_camera driver
 (`/camera/camera/aligned_depth_to_color/image_raw`,
