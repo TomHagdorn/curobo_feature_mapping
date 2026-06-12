@@ -111,6 +111,7 @@ class CuroboMapPublisher(Node):
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self)
 
+        self._map_cloud_pub = self.create_publisher(PointCloud2, "~/map_cloud", 1)
         self._scene_pub = None
         if PlanningScene is not None:
             self._scene_pub = self.create_publisher(PlanningScene, "/planning_scene", 1)
@@ -156,10 +157,12 @@ class CuroboMapPublisher(Node):
         voxel = float(self.get_parameter("voxel_size").value)
         truncation = float(self.get_parameter("truncation_distance").value) or voxel * 8
         feature_dim = 0
+        feature_grid_hw = (0, 0)
         if self._radio is not None:
             probe = self._radio.extract_patch_features(
                 torch.zeros((height, width, 3), dtype=torch.uint8, device=self._device)
             )
+            feature_grid_hw = (probe.shape[0], probe.shape[1])
             feature_dim = probe.shape[-1]
         cfg = MapperCfg(
             voxel_size=voxel,
@@ -178,6 +181,8 @@ class CuroboMapPublisher(Node):
             image_height=height,
             image_width=width,
             feature_dim=feature_dim,
+            feature_grid_height=feature_grid_hw[0],
+            feature_grid_width=feature_grid_hw[1],
             device=str(self._device),
         )
         self._mapper = Mapper(cfg)
@@ -254,11 +259,32 @@ class CuroboMapPublisher(Node):
             return None, None
         return np.asarray(mesh.vertices, dtype=np.float32), np.asarray(mesh.faces)
 
+    def _publish_map_cloud(self):
+        """Publish the colored occupied-voxel cloud for RViz."""
+        voxels = self._mapper.integrator.extract_occupied_voxels(surface_only=True)
+        if len(voxels) == 0:
+            return
+        centers = voxels.centers.cpu().numpy()
+        colors = voxels.colors_uint8().cpu().numpy().astype(np.uint32)
+        if len(centers) > 300_000:
+            s = len(centers) // 300_000 + 1
+            centers, colors = centers[::s], colors[::s]
+        # RViz expects 'rgb' as a packed uint32 reinterpreted as float32.
+        packed = ((colors[:, 0] << 16) | (colors[:, 1] << 8) | colors[:, 2]).view(np.float32)
+        fields = [
+            PointField(name=n, offset=4 * i, datatype=PointField.FLOAT32, count=1)
+            for i, n in enumerate(("x", "y", "z", "rgb"))
+        ]
+        header = Header(stamp=self.get_clock().now().to_msg(), frame_id=self._world_frame)
+        data = np.column_stack([centers.astype(np.float32), packed])
+        self._map_cloud_pub.publish(point_cloud2.create_cloud(header, fields, data))
+
     def _publish_map(self) -> str:
-        if self._scene_pub is None:
-            return "moveit_msgs not available; planning-scene publishing disabled"
         if self._mapper is None or self._n_integrated == 0:
             return "no frames integrated yet"
+        self._publish_map_cloud()
+        if self._scene_pub is None:
+            return "published map_cloud (moveit_msgs missing; no planning scene)"
         vertices, faces = self._extract_mesh_np()
         if vertices is None:
             return "map is empty"

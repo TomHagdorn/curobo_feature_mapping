@@ -171,6 +171,11 @@ ros2 service call /curobo_map_publisher/query_features std_srvs/srv/Trigger
 # or one-shot via topic
 ros2 topic pub --once /curobo_map_publisher/feature_query std_msgs/msg/String "{data: chair}"
 
+# see it: RViz with fixed frame = world_frame, add two PointCloud2 displays:
+#   /curobo_map_publisher/map_cloud        (colored map, republished every publish_period)
+#   /curobo_map_publisher/feature_matches  (matched voxels; color by the 'score' field)
+rviz2
+
 # force a planning-scene update / save the full mesh
 ros2 service call /curobo_map_publisher/publish_map std_srvs/srv/Trigger
 ros2 service call /curobo_map_publisher/save_mesh std_srvs/srv/Trigger

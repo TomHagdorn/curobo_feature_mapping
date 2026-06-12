@@ -10,7 +10,7 @@ needed. Extra deps: ``timm transformers torchvision einops``.
 import torch
 import torch.nn.functional as F
 
-RADIO_MODEL_NAME = "c-radio_v3-B"
+RADIO_MODEL_NAME = "c-radio_v3-b"
 TEXT_ADAPTOR_NAME = "siglip2"
 
 
@@ -32,7 +32,7 @@ class RadioFeatures:
                 "NVlabs/RADIO",
                 "radio_model",
                 source="github",
-                version=model_name,
+                version=model_name.lower(),
                 progress=True,
                 skip_validation=True,
                 adaptor_names=adaptor_names,
