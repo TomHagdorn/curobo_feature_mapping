@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ur_realsense_mapping"
+version = "0.1.0"
+description = "Volumetric mapping with cuRobo from a RealSense camera (bag file or ROS 2 topics) on a UR robot"
+requires-python = ">=3.10"
+dependencies = [
+    "curobo",
+    "numpy",
+    "torch",
+    "tqdm",
+    "imageio",
+]
+
+[project.optional-dependencies]
+# Reading native RealSense .bag recordings.
+realsense = ["pyrealsense2>=2.55"]
+
+[project.scripts]
+ur-rs-map = "ur_realsense_mapping.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# Resolve curobo from the local checkout when installing with uv.
+# Pin updates by checking out a known-good commit in ../curobo.
+[tool.uv.sources]
+curobo = { path = "../curobo", editable = true }
