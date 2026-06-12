@@ -52,12 +52,26 @@ top_k, minimum_score, feature_projector)` → MatchedVoxels
 `extract_occupied_voxels().features()`. `features.py` is adapted from
 curobo's feature_mapping example (RADIO via torch.hub NVlabs/RADIO).
 
+## ROS 2 path verified (2026-06-12, commit d3fc118)
+
+`--source ros2 --pose-source tf` works end-to-end against the nvblox
+quickstart sim bag (`~/workspaces/isaac_ros-dev/isaac_ros_assets/isaac_ros_nvblox/quickstart`,
+sqlite3, 7.8 s, /tf odom->base_link->front_stereo_camera:left_rgb, depth
+32FC1 on /front_stereo_camera/depth/ground_truth): 76 frames -> 318k-vertex
+colored mesh. Two bugs found+fixed there: subscriptions MUST use
+qos_profile_sensor_data (reliable subs get nothing from best-effort bag
+replay), and the first frame needs its own 120 s timeout. Replay big sim
+bags at --rate 0.25 — best-effort loopback drops most 3.7 MB depth frames
+at full rate. Other local assets: galileo bags have /tf_static only (NVIDIA
+poses them with live cuVSLAM); r2b_robotarm (NGC r2b 2024) is the public
+arm+TF+joint_states bag, camera external/static.
+
 ## Planned next
 
 - RobotSegmenter (curobo.perception) to mask the arm out of depth before
   integration once camera is arm-mounted.
-- Test ros2_source + map_publisher against `ros2 bag play` / live driver
-  (boot-tested only: services respond, no camera data yet).
+- Test map_publisher (the MoveIt node) against the quickstart bag the same
+  way (only the CLI path has seen real frames).
 - C-RADIO runtime deps untested (`uv pip install -e '.[features]'`, needs
   torch.hub download + possibly HF_TOKEN).
 - Custom srv interface package if string-request query services are wanted.
