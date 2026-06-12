@@ -7,11 +7,15 @@ old in-tree history: curobo repo, branch `thagdorn/archive-mapper`.
 
 ## Environment
 
-- Python: `/home/tsp_th/curobo/.venv/bin/python` (has curobo editable from
-  `../curobo`, pyrealsense2, and this package editable; CLI: `ur-rs-map`).
-- cuRobo: resolved from `../curobo` via `[tool.uv.sources]`; tested at
-  upstream main `e0b1030` (post warp-1.13).
-- ROS 2 mode needs a sourced ROS environment (rclpy etc., not pip).
+- TWO venvs, by purpose:
+  - `/home/tsp_th/curobo/.venv` (py3.11): bag CLI `ur-rs-map`. CANNOT import
+    rclpy (ROS Jazzy is py3.12).
+  - `<repo>/.venv` (py3.12): ROS node `ur-rs-map-publisher`; use with
+    `source /opt/ros/jazzy/setup.bash`. Has curobo + this pkg editable.
+- cuRobo: pip name is `nvidia-curobo`, resolved editable from `../curobo`;
+  tested at upstream main `e0b1030` (post warp-1.13).
+- MoveIt NOT installed as of 2026-06-12 (`sudo apt install ros-jazzy-moveit`
+  needed); node degrades gracefully (mapping + queries work, no scene pub).
 
 ## Architecture
 
@@ -34,12 +38,26 @@ old in-tree history: curobo repo, branch `thagdorn/archive-mapper`.
   feature maps. Agreed architecture: ONE cuRobo TSDF (+C-RADIO features),
   geometry exported to MoveIt, semantic queries answered in cuRobo.
 
+## Feature/MoveIt node (added 2026-06-12, commit c9f1d6a)
+
+`map_publisher.py` / `ur-rs-map-publisher`: live TF-posed integration +
+C-RADIO feature fusion (`enable_features`, `feature_stride`) + periodic
+PlanningScene diffs. Feature queries: set `query_prompt` param, call
+`~/query_features` (std_srvs/Trigger, JSON response; matches on
+`~/feature_matches` PointCloud2). String-request services would need a
+custom .srv interface pkg (colcon) — deliberately avoided.
+Key curobo APIs: `Mapper.extract_matching_feature_voxels(feature_vector,
+top_k, minimum_score, feature_projector)` → MatchedVoxels
+(voxels.centers, scores_per_voxel()); per-voxel feature export via
+`extract_occupied_voxels().features()`. `features.py` is adapted from
+curobo's feature_mapping example (RADIO via torch.hub NVlabs/RADIO).
+
 ## Planned next
 
-- `--features` flag: C-RADIO feature integration (see curobo
-  `examples/getting_started/feature_mapping.py`).
-- MoveIt 2 publisher node: periodic `mapper.extract_mesh()` →
-  `moveit_msgs/CollisionObject`.
 - RobotSegmenter (curobo.perception) to mask the arm out of depth before
   integration once camera is arm-mounted.
-- Test ros2_source against `ros2 bag play` / live driver.
+- Test ros2_source + map_publisher against `ros2 bag play` / live driver
+  (boot-tested only: services respond, no camera data yet).
+- C-RADIO runtime deps untested (`uv pip install -e '.[features]'`, needs
+  torch.hub download + possibly HF_TOKEN).
+- Custom srv interface package if string-request query services are wanted.
