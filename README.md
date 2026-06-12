@@ -10,22 +10,26 @@ cuRobo is resolved from the sibling checkout `../curobo` (see
 `[tool.uv.sources]` in `pyproject.toml`). To update cuRobo, `git pull` /
 checkout a commit in `../curobo` — this package never conflicts with it.
 
+For ROS 2 mode the venv Python **must match the ROS distro's Python**
+(Jazzy = 3.12), otherwise rclpy's C extensions won't import:
+
 ```bash
 cd ~/workspaces/isaac_ros-dev/src/ur_realsense_mapping
-
-# Recommended: into the existing working venv
-uv pip install -e '.[realsense]' --python /home/tsp_th/curobo/.venv/bin/python
-
-# Or into a fresh venv (pulls curobo editable from ../curobo automatically)
-uv venv && uv pip install -e '.[realsense]'
+uv venv --python /usr/bin/python3.12 .venv
+uv pip install -e ../curobo -e '.[realsense,moveit]' --python .venv/bin/python
 ```
 
-ROS 2 mode additionally needs a **sourced ROS 2 environment** (rclpy, tf2_ros,
-message_filters, sensor_msgs) — these come from ROS, not pip:
+Run ROS-facing commands with ROS sourced:
 
 ```bash
-source /opt/ros/humble/setup.bash   # adjust distro
+source /opt/ros/jazzy/setup.bash && source .venv/bin/activate
 ```
+
+MoveIt itself comes from apt: `sudo apt install ros-jazzy-moveit` (without it
+the node still maps and answers feature queries; scene publishing is disabled).
+
+For bag-only usage any Python ≥3.10 venv works, e.g. the existing
+`/home/tsp_th/curobo/.venv` (3.11).
 
 ## Quick start: map from a .bag recording
 
@@ -112,6 +116,48 @@ Default topics match the realsense2_camera driver
 (`/camera/camera/aligned_depth_to_color/image_raw`,
 `/camera/camera/color/image_raw`, `/camera/camera/color/camera_info`);
 override with `--depth-topic/--color-topic/--info-topic`.
+
+## MoveIt 2 export + feature queries: `ur-rs-map-publisher`
+
+A ROS 2 node that maps continuously (TF poses, like `--pose-source tf`),
+optionally fuses C-RADIO features, and exports to MoveIt 2:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source .venv/bin/activate          # the py3.12 venv (must match the ROS python)
+ur-rs-map-publisher --ros-args -p world_frame:=base_link \
+    -p enable_features:=true -p publish_period:=5.0
+```
+
+- Publishes the decimated map mesh as CollisionObject `curobo_map` in
+  `/planning_scene` diffs every `publish_period` seconds (requires MoveIt:
+  `sudo apt install ros-jazzy-moveit`). Same-id republish = atomic replace.
+- `mesh_max_triangles` (default 15000) keeps FCL fast; full-resolution map
+  stays in cuRobo.
+
+Services / query interface (string requests need a custom .srv package, so
+queries use a parameter + Trigger):
+
+```bash
+# semantic query against the fused C-RADIO features
+ros2 param set /curobo_map_publisher query_prompt "table"
+ros2 service call /curobo_map_publisher/query_features std_srvs/srv/Trigger
+#   -> response JSON: {"prompt": "table", "blocks": .., "voxels": ..,
+#                      "best_score": .., "centroid": [x, y, z]}
+#   matched voxels -> ~/feature_matches (PointCloud2, x y z score; view in RViz)
+#   centroid       -> ~/feature_centroid (PointStamped)
+
+# or one-shot via topic
+ros2 topic pub --once /curobo_map_publisher/feature_query std_msgs/msg/String "{data: chair}"
+
+# force a planning-scene update / save the full mesh
+ros2 service call /curobo_map_publisher/publish_map std_srvs/srv/Trigger
+ros2 service call /curobo_map_publisher/save_mesh std_srvs/srv/Trigger
+```
+
+Feature notes: C-RADIO v3-B downloads via torch.hub on first run
+(`pip install -e '.[features]'` for its deps, export `HF_TOKEN` if needed);
+`feature_stride` (default 5) controls how often RGB frames are encoded.
 
 ## Pose sources
 

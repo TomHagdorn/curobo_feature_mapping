@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Volumetric mapping with cuRobo from a RealSense camera (bag file or ROS 2 topics) on a UR robot"
 requires-python = ">=3.10"
 dependencies = [
-    "curobo",
+    "nvidia-curobo",
     "numpy",
     "torch",
     "tqdm",
@@ -18,9 +18,14 @@ dependencies = [
 [project.optional-dependencies]
 # Reading native RealSense .bag recordings.
 realsense = ["pyrealsense2>=2.55"]
+# C-RADIO feature mapping (model downloads via torch.hub on first use).
+features = ["timm", "transformers", "torchvision", "einops"]
+# Mesh decimation before publishing to MoveIt.
+moveit = ["fast-simplification"]
 
 [project.scripts]
 ur-rs-map = "ur_realsense_mapping.cli:main"
+ur-rs-map-publisher = "ur_realsense_mapping.map_publisher:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -28,4 +33,4 @@ where = ["src"]
 # Resolve curobo from the local checkout when installing with uv.
 # Pin updates by checking out a known-good commit in ../curobo.
 [tool.uv.sources]
-curobo = { path = "../curobo", editable = true }
+nvidia-curobo = { path = "../curobo", editable = true }
