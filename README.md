@@ -125,9 +125,18 @@ optionally fuses C-RADIO features, and exports to MoveIt 2:
 ```bash
 source /opt/ros/jazzy/setup.bash
 source .venv/bin/activate          # the py3.12 venv (must match the ROS python)
-ur-rs-map-publisher --ros-args -p world_frame:=base_link \
-    -p enable_features:=true -p publish_period:=5.0
+
+# defaults from a YAML params file, individual overrides on the command line
+# (rightmost wins: built-in default < --params-file < -p)
+ur-rs-map-publisher --ros-args \
+    --params-file config/map_publisher.yaml \
+    -p world_frame:=base_link -p camera_frame:=camera_color_optical_frame
 ```
+
+All settings (frames, topics, voxel size, feature options, ...) are normal
+ROS 2 parameters — see [config/map_publisher.yaml](config/map_publisher.yaml)
+for the full list; copy it into your own setup's config directory and adapt.
+Inspect at runtime with `ros2 param list /curobo_map_publisher`.
 
 - Publishes the decimated map mesh as CollisionObject `curobo_map` in
   `/planning_scene` diffs every `publish_period` seconds (requires MoveIt:

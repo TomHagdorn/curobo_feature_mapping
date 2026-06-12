@@ -1,0 +1,35 @@
+# Parameters for ur-rs-map-publisher (node: curobo_map_publisher).
+# Standard ROS 2 params file: values here override the node's built-in
+# defaults, and single parameters can still be overridden on the command
+# line, e.g.:
+#   ur-rs-map-publisher --ros-args --params-file config/map_publisher.yaml \
+#       -p world_frame:=world -p voxel_size:=0.01
+curobo_map_publisher:
+  ros__parameters:
+    # --- frames (TF chain: world_frame -> ... -> camera_frame) ---
+    world_frame: base_link
+    camera_frame: camera_color_optical_frame
+
+    # --- input topics (realsense2_camera with align_depth.enable:=true) ---
+    depth_topic: /camera/camera/aligned_depth_to_color/image_raw
+    color_topic: /camera/camera/color/image_raw
+    info_topic: /camera/camera/color/camera_info
+
+    # --- TSDF grid ---
+    device: cuda:0
+    voxel_size: 0.02            # m
+    extent: [4.0, 4.0, 2.0]     # m, in world_frame
+    grid_center: [0.0, 0.0, 0.5]
+    truncation_distance: 0.0    # 0 -> 8 * voxel_size
+
+    # --- MoveIt export ---
+    publish_period: 5.0         # s between /planning_scene diffs
+    mesh_max_triangles: 15000   # decimation target (FCL collision speed)
+    mesh_path: curobo_map.ply   # target of ~/save_mesh
+
+    # --- C-RADIO feature mapping / semantic queries ---
+    enable_features: true
+    feature_stride: 5           # encode every Nth integrated frame
+    query_prompt: ""            # set then call ~/query_features
+    query_top_k: 200
+    query_min_score: 0.05
