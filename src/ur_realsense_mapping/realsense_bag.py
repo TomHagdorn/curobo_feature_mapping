@@ -14,9 +14,14 @@ except ImportError:  # pragma: no cover
 class RealsenseBag:
     """Iterate aligned depth (meters) + color frames from a RealSense ``.bag``.
 
-    Yields ``(depth_m, rgb, intrinsics_3x3)`` numpy arrays. Non-video framesets
-    (e.g. IMU-only composites) are skipped. Depth is converted to meters using
-    the depth scale stored in the bag.
+    Yields ``(depth_m, rgb, intrinsics_3x3, gyro_samples)`` where
+    ``gyro_samples`` is a list of ``(t_seconds, angular_velocity_xyz)`` tuples
+    collected since the previous video frame (empty if the bag has no IMU).
+    Depth is converted to meters using the depth scale stored in the bag.
+
+    D4xx gyro data is reported in a frame aligned with the depth optical frame
+    (x right, y down, z forward), so the rates can be used directly as
+    camera-body rotation rates.
     """
 
     def __init__(self, bag_path: str, color: bool = True):
@@ -48,6 +53,10 @@ class RealsenseBag:
         depth_sensor = device.first_depth_sensor()
         self.depth_scale = depth_sensor.get_depth_scale()
 
+        self.has_gyro = any(
+            s.stream_type() == rs.stream.gyro for s in profile.get_streams()
+        )
+
         self._align = rs.align(rs.stream.depth) if color else None
         self._intrinsics = None  # filled from the first depth frame
         self.image_height = None
@@ -61,12 +70,25 @@ class RealsenseBag:
         )
 
     def __iter__(self):
+        pending_gyro = []
         try:
             while True:
                 try:
                     frameset = self._pipeline.wait_for_frames(5000)
                 except RuntimeError:
                     break  # end of bag
+
+                # Collect gyro samples from the raw frameset (motion data
+                # arrives in its own framesets between video frames).
+                for f in frameset:
+                    if f.is_motion_frame() and f.get_profile().stream_type() == rs.stream.gyro:
+                        m = f.as_motion_frame().get_motion_data()
+                        pending_gyro.append(
+                            (
+                                f.get_timestamp() / 1000.0,
+                                np.array([m.x, m.y, m.z], dtype=np.float32),
+                            )
+                        )
 
                 if self._align is not None:
                     frameset = self._align.process(frameset)
@@ -92,7 +114,8 @@ class RealsenseBag:
                     if color_frame
                     else None
                 )
-                yield depth_m, rgb, self._intrinsics
+                yield depth_m, rgb, self._intrinsics, pending_gyro
+                pending_gyro = []
         finally:
             self._pipeline.stop()
 

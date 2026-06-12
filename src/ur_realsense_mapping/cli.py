@@ -45,7 +45,13 @@ from curobo.perception import FilterDepth, Mapper, MapperCfg
 from curobo.profiling import CudaEventTimer
 from curobo.types import CameraObservation, DeviceCfg, Pose
 
-from ur_realsense_mapping.poses import load_trajectory, predict_pose
+from ur_realsense_mapping.poses import (
+    QUAT_IDENTITY,
+    integrate_gyro,
+    load_trajectory,
+    predict_pose,
+    quat_mul,
+)
 
 
 def parse_args():
@@ -103,6 +109,12 @@ def parse_args():
         help="Frame-0 / static camera pose as x y z qw qx qy qz",
     )
     parser.add_argument("--traj", type=str, default=None, help="Trajectory file for --pose-source traj")
+    parser.add_argument(
+        "--no-gyro",
+        action="store_true",
+        help="Disable the gyro rotation prior for --pose-source track (used "
+        "automatically when the bag contains an IMU stream)",
+    )
     parser.add_argument("--stride", type=int, default=1, help="Process every Nth video frame")
     parser.add_argument(
         "--max-track-error",
@@ -126,7 +138,7 @@ def parse_args():
 
 
 def make_source(args):
-    """Return an iterable of (depth_m, rgb, intrinsics, pose_or_None)."""
+    """Return an iterable of (depth_m, rgb, intrinsics, pose_or_None, gyro_samples)."""
     if args.source == "bag":
         if args.bag is None:
             raise ValueError("--source bag requires --bag")
@@ -135,15 +147,15 @@ def make_source(args):
         bag = RealsenseBag(args.bag, color=not args.depth_only)
         print(
             f"  device: {bag.device_name} | duration: {bag.duration_s:.1f}s "
-            f"| depth scale: {bag.depth_scale:.6f}"
+            f"| depth scale: {bag.depth_scale:.6f} | gyro: {bag.has_gyro}"
         )
-        return ((d, c, k, None) for d, c, k in bag)
+        return ((d, c, k, None, g) for d, c, k, g in bag)
 
     from ur_realsense_mapping.ros2_source import Ros2TopicSource
 
     if args.pose_source == "tf" and args.world_frame is None:
         raise ValueError("--pose-source tf requires --world-frame")
-    return Ros2TopicSource(
+    src = Ros2TopicSource(
         depth_topic=args.depth_topic,
         color_topic=args.color_topic,
         info_topic=args.info_topic,
@@ -151,6 +163,7 @@ def make_source(args):
         camera_frame=args.camera_frame,
         color=not args.depth_only,
     )
+    return ((d, c, k, p, []) for d, c, k, p in src)
 
 
 def main():
@@ -167,7 +180,7 @@ def main():
     first = next(frame_iter, None)
     if first is None:
         raise RuntimeError("no video frames received")
-    depth0, rgb0, intr0, pose0 = first
+    depth0, rgb0, intr0, pose0, gyro0 = first
     H, W = depth0.shape
     print(
         f"  image size: {W}x{H} | fx={intr0[0,0]:.1f} fy={intr0[1,1]:.1f} "
@@ -280,11 +293,21 @@ def main():
 
     # The first video frame was already pulled above; build a stream that yields
     # it first, then the rest of the source.
+    # Body-frame rotation accumulated from gyro since the last accepted frame;
+    # used to seed ICP through fast rotations (and across lost frames).
+    gyro_since_good = QUAT_IDENTITY.copy()
+    use_gyro = False
+
     def all_frames():
-        yield depth0, rgb0, intr0, pose0
+        yield depth0, rgb0, intr0, pose0, gyro0
         yield from frame_iter
 
-    for raw_idx, (depth_np, rgb_np, _, tf_pose) in enumerate(all_frames()):
+    for raw_idx, (depth_np, rgb_np, _, tf_pose, gyro_samples) in enumerate(all_frames()):
+        # Accumulate gyro before the stride check so strided-out frames still
+        # contribute their rotation.
+        if args.pose_source == "track" and not args.no_gyro and gyro_samples:
+            use_gyro = True
+            gyro_since_good = quat_mul(gyro_since_good, integrate_gyro(gyro_samples))
         if raw_idx % args.stride != 0:
             continue
         if n_done >= args.max_frames:
@@ -310,10 +333,25 @@ def main():
             if good_pose is None:
                 pose = initial_pose  # anchor frame 0; nothing to track against yet
             else:
-                # Seed: constant-velocity prediction if we had lock last frame,
-                # else just the last good pose (we don't know where the camera
-                # went while lost, so don't extrapolate into the void).
-                if had_lock and good_pose_prev is not None:
+                # Seed: gyro rotation prior when available (also valid across
+                # lost frames, since rotation keeps being accumulated);
+                # otherwise constant-velocity prediction if we had lock last
+                # frame, else just the last good pose.
+                if use_gyro:
+                    dpos = [0.0, 0.0, 0.0]
+                    if had_lock and good_pose_prev is not None:
+                        dpos = (
+                            (good_pose_prev.inverse().multiply(good_pose))
+                            .position.view(3)
+                            .cpu()
+                            .tolist()
+                        )
+                    seed = good_pose.multiply(
+                        Pose.from_list(dpos + gyro_since_good.tolist(), device_cfg=device_cfg)
+                    )
+                    if not pose_is_finite(seed):
+                        seed = good_pose
+                elif had_lock and good_pose_prev is not None:
                     seed = predict_pose(good_pose, good_pose_prev)
                     if not pose_is_finite(seed):
                         seed = good_pose
@@ -359,6 +397,7 @@ def main():
                 good_pose_prev = good_pose
                 good_pose = clone_pose(pose)
                 had_lock = True
+                gyro_since_good = QUAT_IDENTITY.copy()
 
         last_pose = pose
 
