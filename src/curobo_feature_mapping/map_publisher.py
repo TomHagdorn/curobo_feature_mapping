@@ -21,10 +21,22 @@ Interfaces (under the node name, default ``curobo_map_publisher``):
   centroid on ``~/feature_centroid`` (geometry_msgs/PointStamped).
 - ``~/feature_query`` (std_msgs/String, subscribed): one-shot query topic —
   same effect as setting ``query_prompt`` and calling ``~/query_features``.
+- ``~/query`` (curobo_feature_mapping_interfaces/QueryFeatures): single-call
+  query — prompt (and optional top_k / min_score) in the request, JSON summary
+  in the response. Only registered when the interfaces package is built and
+  sourced; the param+Trigger and String-topic paths above need no build.
 
-A plain-string query *service* would need a custom .srv interface package
-(rosidl codegen via colcon); the Trigger+parameter pair keeps this package
-pip-installable. Example session:
+The param+Trigger and String-topic paths keep the node usable with a plain
+``uv pip install`` (no colcon). The richer ``~/query`` service needs the
+sibling ``curobo_feature_mapping_interfaces`` ament_cmake package:
+
+    colcon build --base-paths src/curobo_feature_mapping_interfaces
+    source install/setup.bash
+    # then, e.g.:
+    ros2 service call /curobo_map_publisher/query \\
+        curobo_feature_mapping_interfaces/srv/QueryFeatures "{prompt: 'table'}"
+
+Equivalent no-build path:
 
     ros2 param set /curobo_map_publisher query_prompt "table"
     ros2 service call /curobo_map_publisher/query_features std_srvs/srv/Trigger
@@ -62,6 +74,16 @@ try:
     )
 except ImportError:  # pragma: no cover
     PlanningScene = None
+
+# QueryFeatures lives in the optional curobo_feature_mapping_interfaces colcon
+# package (build: colcon build --base-paths src/curobo_feature_mapping_interfaces,
+# then source install/setup.bash). Without it the param+Trigger query_features
+# service and the ~/feature_query String topic still work; only the single-call
+# ~/query service (prompt in the request, JSON in the response) is unavailable.
+try:
+    from curobo_feature_mapping_interfaces.srv import QueryFeatures
+except ImportError:  # pragma: no cover
+    QueryFeatures = None
 
 
 class CuroboMapPublisher(Node):
@@ -144,6 +166,8 @@ class CuroboMapPublisher(Node):
         self.create_service(Trigger, "~/publish_map", self._srv_publish_map)
         self.create_service(Trigger, "~/save_mesh", self._srv_save_mesh)
         self.create_service(Trigger, "~/query_features", self._srv_query_features)
+        if QueryFeatures is not None:
+            self.create_service(QueryFeatures, "~/query", self._srv_query)
         self.create_timer(float(self.get_parameter("publish_period").value), self._publish_map)
 
         self.get_logger().info(
@@ -326,7 +350,8 @@ class CuroboMapPublisher(Node):
     # ------------------------------------------------------------------ #
     # Feature queries
     # ------------------------------------------------------------------ #
-    def _run_query(self, prompt: str) -> dict:
+    def _run_query(self, prompt: str, top_k: int | None = None,
+                   min_score: float | None = None) -> dict:
         if self._radio is None:
             return {"error": "features disabled (enable_features=false)"}
         if self._mapper is None or self._n_integrated == 0:
@@ -334,12 +359,19 @@ class CuroboMapPublisher(Node):
         if not prompt:
             return {"error": "empty prompt (set the query_prompt parameter)"}
 
+        # None falls back to the node's parameters (the param+Trigger / topic
+        # paths pass nothing; the ~/query service may override per request).
+        if top_k is None:
+            top_k = int(self.get_parameter("query_top_k").value)
+        if min_score is None:
+            min_score = float(self.get_parameter("query_min_score").value)
+
         text_vec = self._radio.encode_text(prompt)[0]
         matched = self._mapper.extract_matching_feature_voxels(
             feature_vector=text_vec,
-            top_k=int(self.get_parameter("query_top_k").value),
+            top_k=top_k,
             surface_only=True,
-            minimum_score=float(self.get_parameter("query_min_score").value),
+            minimum_score=min_score,
             feature_projector=self._radio.project_features,
         )
         n_voxels = len(matched)
@@ -393,6 +425,17 @@ class CuroboMapPublisher(Node):
 
     def _srv_query_features(self, _request, response):
         result = self._run_query(self.get_parameter("query_prompt").value)
+        response.success = "error" not in result
+        response.message = json.dumps(result)
+        return response
+
+    def _srv_query(self, request, response):
+        """Single-call query: prompt in the request, JSON in the response."""
+        result = self._run_query(
+            request.prompt,
+            top_k=request.top_k if request.top_k > 0 else None,
+            min_score=request.min_score if request.min_score >= 0.0 else None,
+        )
         response.success = "error" not in result
         response.message = json.dumps(result)
         return response
