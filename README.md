@@ -185,6 +185,88 @@ Feature notes: C-RADIO v3-B downloads via torch.hub on first run
 (`pip install -e '.[features]'` for its deps, export `HF_TOKEN` if needed);
 `feature_stride` (default 5) controls how often RGB frames are encoded.
 
+## Try it: NVIDIA warehouse demo bag (no robot needed)
+
+End-to-end feature mapping + semantic queries against a public simulated
+rosbag — a mobile robot driving a warehouse, with ground-truth `/tf` poses.
+This is the best dry run before mounting the camera, since it exercises the
+exact `--pose-source tf` path your robot will use.
+
+**1. Download the bag** (~640 MB, needs a free NGC account; the nvblox
+quickstart asset bundle). Lands in
+`${ISAAC_ROS_WS}/isaac_ros_assets/isaac_ros_nvblox/quickstart/`:
+
+```bash
+NGC_ORG=nvidia NGC_TEAM=isaac
+NGC_RESOURCE=isaac_ros_nvblox_assets
+NGC_FILENAME=quickstart.tar.gz
+VERSION=$(ngc registry resource list "$NGC_ORG/$NGC_TEAM/$NGC_RESOURCE:*" 2>/dev/null \
+    | grep -oP '\d+\.\d+\.\d+' | sort -V | tail -1)   # or pick a version from the NGC page
+curl -LO "https://api.ngc.nvidia.com/v2/resources/$NGC_ORG/$NGC_TEAM/$NGC_RESOURCE/versions/$VERSION/files/$NGC_FILENAME"
+mkdir -p "${ISAAC_ROS_WS}/isaac_ros_assets"
+tar -xf "$NGC_FILENAME" -C "${ISAAC_ROS_WS}/isaac_ros_assets" && rm "$NGC_FILENAME"
+```
+
+(If you already ran the nvblox quickstart, the bag is there — no download
+needed.)
+
+**2. Terminal 1 — the mapping node.** Wait for `C-RADIO ready` then
+`Mapping ... features=on`:
+
+```bash
+cd ~/workspaces/isaac_ros-dev/src/ur_realsense_mapping
+source /opt/ros/jazzy/setup.bash && source .venv/bin/activate
+ur-rs-map-publisher --ros-args \
+    -p world_frame:=odom \
+    -p camera_frame:="front_stereo_camera:left_rgb" \
+    -p depth_topic:=/front_stereo_camera/depth/ground_truth \
+    -p color_topic:=/front_stereo_camera/left/image_raw \
+    -p info_topic:=/front_stereo_camera/depth/camera_info \
+    -p extent:="[14.0,14.0,4.0]" -p grid_center:="[0.0,0.0,1.0]" \
+    -p voxel_size:=0.04 \
+    -p enable_features:=true -p feature_stride:=2 \
+    -p publish_period:=10.0
+```
+
+**3. Terminal 2 — replay the bag** (once Terminal 1 says `features=on`).
+Quarter speed: the sim's float-depth frames are ~3.7 MB and best-effort
+transport drops most at full rate.
+
+```bash
+source /opt/ros/jazzy/setup.bash
+ros2 bag play --rate 0.2 \
+    ~/workspaces/isaac_ros-dev/isaac_ros_assets/isaac_ros_nvblox/quickstart
+```
+
+Terminal 1 should log `Mapper initialized (... feature_dim=768)` then
+`Integrated N frames`.
+
+**4. Terminal 3 — RViz.** Set **Fixed Frame** to `odom` (not the default
+`map`), then **Add → By topic**:
+
+- `/curobo_map_publisher/map_cloud` → PointCloud2, **Size** `0.04`
+- `/curobo_map_publisher/feature_matches` → PointCloud2, **Color Transformer**
+  `Intensity`, **Channel Name** `score`, **Size** `0.06`
+
+```bash
+source /opt/ros/jazzy/setup.bash && rviz2
+```
+
+**5. Terminal 4 — query.** Matched voxels light up in RViz over the map;
+optionally export each query as a PLY:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+ros2 param set /curobo_map_publisher query_save_path "/tmp/match_{prompt}.ply"
+ros2 param set /curobo_map_publisher query_prompt "shelving rack"
+ros2 service call /curobo_map_publisher/query_features std_srvs/srv/Trigger
+```
+
+The first query takes ~10 s (kernel compile), the rest are instant. Try
+`"cardboard boxes"`, `"floor"`, `"barrel"`. Scores are SigLIP-space cosines
+(~0.12–0.20 is a real match, not 0.9); raise `query_min_score` to drop weak
+hits.
+
 ## Pose sources
 
 | `--pose-source` | poses from | when |
