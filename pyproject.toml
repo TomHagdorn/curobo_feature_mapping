@@ -3,9 +3,9 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ur_realsense_mapping"
+name = "curobo_feature_mapping"
 version = "0.1.0"
-description = "Volumetric mapping with cuRobo from a RealSense camera (bag file or ROS 2 topics) on a UR robot"
+description = "Volumetric + feature mapping with cuRobo from arbitrary depth sources (bag file or ROS 2 topics), robot-agnostic"
 requires-python = ">=3.10"
 dependencies = [
     # [cu13] matches the CUDA of PyPI's default torch wheels (2.12 = cu130) and
@@ -26,8 +26,8 @@ features = ["timm", "transformers", "torchvision", "einops"]
 moveit = ["fast-simplification"]
 
 [project.scripts]
-ur-rs-map = "ur_realsense_mapping.cli:main"
-ur-rs-map-publisher = "ur_realsense_mapping.map_publisher:main"
+cfmap = "curobo_feature_mapping.cli:main"
+cfmap-publisher = "curobo_feature_mapping.map_publisher:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

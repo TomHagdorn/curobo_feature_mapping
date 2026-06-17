@@ -1,8 +1,8 @@
-# Parameters for ur-rs-map-publisher (node: curobo_map_publisher).
+# Parameters for cfmap-publisher (node: curobo_map_publisher).
 # Standard ROS 2 params file: values here override the node's built-in
 # defaults, and single parameters can still be overridden on the command
 # line, e.g.:
-#   ur-rs-map-publisher --ros-args --params-file config/map_publisher.yaml \
+#   cfmap-publisher --ros-args --params-file config/map_publisher.yaml \
 #       -p world_frame:=world -p voxel_size:=0.01
 curobo_map_publisher:
   ros__parameters:

@@ -1,4 +1,4 @@
-# ur_realsense_mapping
+# curobo_feature_mapping
 
 Standalone package feeding RealSense data into cuRobo's volumetric mapper
 (block-sparse TSDF → ESDF/mesh) for a UR robot with an arm-mounted D435i.
@@ -8,9 +8,9 @@ old in-tree history: curobo repo, branch `thagdorn/archive-mapper`.
 ## Environment
 
 - TWO venvs, by purpose:
-  - `/home/tsp_th/curobo/.venv` (py3.11): bag CLI `ur-rs-map`. CANNOT import
+  - `/home/tsp_th/curobo/.venv` (py3.11): bag CLI `cfmap`. CANNOT import
     rclpy (ROS Jazzy is py3.12).
-  - `<repo>/.venv` (py3.12): ROS node `ur-rs-map-publisher`; use with
+  - `<repo>/.venv` (py3.12): ROS node `cfmap-publisher`; use with
     `source /opt/ros/jazzy/setup.bash`. Has curobo + this pkg editable.
 - cuRobo: pip name is `nvidia-curobo`, resolved editable from `../curobo`;
   tested at upstream main `e0b1030` (post warp-1.13).
@@ -40,7 +40,7 @@ old in-tree history: curobo repo, branch `thagdorn/archive-mapper`.
 
 ## Feature/MoveIt node (added 2026-06-12, commit c9f1d6a)
 
-`map_publisher.py` / `ur-rs-map-publisher`: live TF-posed integration +
+`map_publisher.py` / `cfmap-publisher`: live TF-posed integration +
 C-RADIO feature fusion (`enable_features`, `feature_stride`) + periodic
 PlanningScene diffs. Feature queries: set `query_prompt` param, call
 `~/query_features` (std_srvs/Trigger, JSON response; matches on

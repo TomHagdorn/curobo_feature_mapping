@@ -28,7 +28,7 @@ class RealsenseBag:
         if rs is None:
             raise RuntimeError(
                 "pyrealsense2 is required to read .bag files. Install with "
-                "`pip install 'ur_realsense_mapping[realsense]'`."
+                "`pip install 'curobo_feature_mapping[realsense]'`."
             )
         bag_path = str(Path(bag_path).expanduser())
         if not Path(bag_path).exists():
@@ -144,7 +144,7 @@ class RealsenseLive(RealsenseBag):
         if rs is None:
             raise RuntimeError(
                 "pyrealsense2 is required for live capture. Install with "
-                "`pip install 'ur_realsense_mapping[realsense]'`."
+                "`pip install 'curobo_feature_mapping[realsense]'`."
             )
         self._want_color = color
         self._pipeline = rs.pipeline()

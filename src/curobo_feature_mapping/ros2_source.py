@@ -54,7 +54,7 @@ class Ros2TopicSource:
 
         if not rclpy.ok():
             rclpy.init()
-        self._node: Node = rclpy.create_node("ur_realsense_mapping_source")
+        self._node: Node = rclpy.create_node("curobo_feature_mapping_source")
 
         self._tf_buffer = None
         if world_frame is not None:

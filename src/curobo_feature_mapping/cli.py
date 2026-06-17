@@ -22,8 +22,8 @@ Per-frame camera poses come from one of four sources:
 
 Usage::
 
-    ur-rs-map --source bag --bag ~/Documents/recording.bag --visualize
-    ur-rs-map --source ros2 --pose-source tf --world-frame base_link
+    cfmap --source bag --bag ~/Documents/recording.bag --visualize
+    cfmap --source ros2 --pose-source tf --world-frame base_link
 """
 
 import argparse
@@ -45,7 +45,7 @@ from curobo.perception import FilterDepth, Mapper, MapperCfg
 from curobo.profiling import CudaEventTimer
 from curobo.types import CameraObservation, DeviceCfg, Pose
 
-from ur_realsense_mapping.poses import (
+from curobo_feature_mapping.poses import (
     QUAT_IDENTITY,
     integrate_gyro,
     load_trajectory,
@@ -150,7 +150,7 @@ def make_source(args):
     if args.source == "bag":
         if args.bag is None:
             raise ValueError("--source bag requires --bag")
-        from ur_realsense_mapping.realsense_bag import RealsenseBag
+        from curobo_feature_mapping.realsense_bag import RealsenseBag
 
         bag = RealsenseBag(args.bag, color=not args.depth_only)
         print(
@@ -160,13 +160,13 @@ def make_source(args):
         return ((d, c, k, None, g) for d, c, k, g in bag)
 
     if args.source == "live":
-        from ur_realsense_mapping.realsense_bag import RealsenseLive
+        from curobo_feature_mapping.realsense_bag import RealsenseLive
 
         cam = RealsenseLive(color=not args.depth_only)
         print(f"  device: {cam.device_name} | live | gyro: {cam.has_gyro}")
         return ((d, c, k, None, g) for d, c, k, g in cam)
 
-    from ur_realsense_mapping.ros2_source import Ros2TopicSource
+    from curobo_feature_mapping.ros2_source import Ros2TopicSource
 
     if args.pose_source == "tf" and args.world_frame is None:
         raise ValueError("--pose-source tf requires --world-frame")

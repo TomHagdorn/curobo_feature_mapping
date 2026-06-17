@@ -1,4 +1,4 @@
-# ur_realsense_mapping
+# curobo_feature_mapping
 
 Standalone package: cuRobo volumetric mapping (block-sparse TSDF → ESDF/mesh)
 fed by an Intel RealSense on a UR robot. Depends on cuRobo's public Python API
@@ -14,7 +14,7 @@ For ROS 2 mode the venv Python **must match the ROS distro's Python**
 (Jazzy = 3.12), otherwise rclpy's C extensions won't import:
 
 ```bash
-cd ~/workspaces/isaac_ros-dev/src/ur_realsense_mapping
+cd ~/workspaces/isaac_ros-dev/src/curobo_feature_mapping
 uv venv --python /usr/bin/python3.12 .venv
 uv pip install -e '../curobo[cu13]' -e '.[realsense,moveit]' --python .venv/bin/python
 ```
@@ -37,7 +37,7 @@ With a RealSense connected via USB (gyro prior active on IMU models;
 stop with Ctrl+C — the mesh still gets saved):
 
 ```bash
-ur-rs-map --source live \
+cfmap --source live \
     --voxel-size 0.015 --truncation-distance 0.12 --max-track-error 0.08 \
     --initial-pose 0 0 0 0.5 -0.5 0.5 -0.5 --grid-center 2 0 0 \
     --visualize
@@ -50,7 +50,7 @@ upright), then move slowly and deliberately.
 
 ```bash
 # D435i bag with IMU: gyro rotation prior is used automatically for tracking
-ur-rs-map --source bag --bag ~/Documents/20260211_150520.bag \
+cfmap --source bag --bag ~/Documents/20260211_150520.bag \
     --voxel-size 0.015 --truncation-distance 0.12 --max-track-error 0.08 \
     --visualize
 
@@ -77,7 +77,7 @@ Start your setup as usual, point the parameters at it, and run the mapper
 (ROS sourced + the py3.12 venv active):
 
 ```bash
-ur-rs-map-publisher --ros-args --params-file config/map_publisher.yaml
+cfmap-publisher --ros-args --params-file config/map_publisher.yaml
 ```
 
 Copy [config/map_publisher.yaml](config/map_publisher.yaml) into your own
@@ -89,7 +89,7 @@ The interactive CLI works against the same setup, with flags instead of
 parameters:
 
 ```bash
-ur-rs-map --source ros2 --pose-source tf \
+cfmap --source ros2 --pose-source tf \
     --world-frame base_link --camera-frame camera_color_optical_frame \
     --visualize
 ```
@@ -118,7 +118,7 @@ Replay and map:
 
 ```bash
 ros2 bag play ur_scan_*/ --clock
-ur-rs-map --source ros2 --pose-source tf --world-frame base_link --visualize
+cfmap --source ros2 --pose-source tf --world-frame base_link --visualize
 ```
 
 If TF lookups fail during replay, slow it down (`--rate 0.5`) — the mapper
@@ -129,7 +129,7 @@ Default topics match the realsense2_camera driver
 `/camera/camera/color/image_raw`, `/camera/camera/color/camera_info`);
 override with `--depth-topic/--color-topic/--info-topic`.
 
-## MoveIt 2 export + feature queries: `ur-rs-map-publisher`
+## MoveIt 2 export + feature queries: `cfmap-publisher`
 
 A ROS 2 node that maps continuously (TF poses, like `--pose-source tf`),
 optionally fuses C-RADIO features, and exports to MoveIt 2:
@@ -140,7 +140,7 @@ source .venv/bin/activate          # the py3.12 venv (must match the ROS python)
 
 # defaults from a YAML params file, individual overrides on the command line
 # (rightmost wins: built-in default < --params-file < -p)
-ur-rs-map-publisher --ros-args \
+cfmap-publisher --ros-args \
     --params-file config/map_publisher.yaml \
     -p world_frame:=base_link -p camera_frame:=camera_color_optical_frame
 ```
@@ -214,9 +214,9 @@ needed.)
 `Mapping ... features=on`:
 
 ```bash
-cd ~/workspaces/isaac_ros-dev/src/ur_realsense_mapping
+cd ~/workspaces/isaac_ros-dev/src/curobo_feature_mapping
 source /opt/ros/jazzy/setup.bash && source .venv/bin/activate
-ur-rs-map-publisher --ros-args \
+cfmap-publisher --ros-args \
     -p world_frame:=odom \
     -p camera_frame:="front_stereo_camera:left_rgb" \
     -p depth_topic:=/front_stereo_camera/depth/ground_truth \
@@ -288,7 +288,7 @@ hits.
 - `realsense_bag.py` — .bag frame source (pyrealsense2), incl. gyro samples
 - `ros2_source.py` — ROS 2 topic frame source + TF pose lookup
 - `poses.py` — gyro integration, constant-velocity prediction, trajectory files
-- `cli.py` — mapping loop (`ur-rs-map`)
+- `cli.py` — mapping loop (`cfmap`)
 
 ## cuRobo version notes
 

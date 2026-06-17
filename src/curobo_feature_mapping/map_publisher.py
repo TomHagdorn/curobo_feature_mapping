@@ -48,14 +48,14 @@ from tf2_ros import Buffer, TransformListener
 from curobo.perception import FilterDepth, Mapper, MapperCfg
 from curobo.types import CameraObservation, DeviceCfg, Pose
 
-from ur_realsense_mapping.ros2_source import Ros2TopicSource
+from curobo_feature_mapping.ros2_source import Ros2TopicSource
 
 # moveit_msgs only ships with MoveIt (apt: ros-<distro>-moveit). Without it the
 # node still maps and answers feature queries; only scene publishing is off.
 try:
     from moveit_msgs.msg import PlanningScene
 
-    from ur_realsense_mapping.moveit_export import (
+    from curobo_feature_mapping.moveit_export import (
         decimate,
         make_collision_object,
         make_planning_scene_diff,
@@ -103,7 +103,7 @@ class CuroboMapPublisher(Node):
         self._n_integrated = 0
         self._radio = None
         if self.get_parameter("enable_features").value:
-            from ur_realsense_mapping.features import RadioFeatures
+            from curobo_feature_mapping.features import RadioFeatures
 
             self.get_logger().info("Loading C-RADIO (downloads on first use)...")
             self._radio = RadioFeatures(device=str(self._device))
