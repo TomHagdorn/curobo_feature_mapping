@@ -182,7 +182,9 @@ class CuroboMapPublisher(Node):
         voxel = float(self.get_parameter("voxel_size").value)
         truncation = float(self.get_parameter("truncation_distance").value) or voxel * 8
         feature_dim = 0
-        feature_grid_hw = (0, 0)
+        # cuRobo's MapperCfg contract: with features off, feature_grid_height/width
+        # must be None (not 0 -- 0 counts as "specified" and fails validation).
+        feature_grid_hw = (None, None)
         if self._radio is not None:
             probe = self._radio.extract_patch_features(
                 torch.zeros((height, width, 3), dtype=torch.uint8, device=self._device)
@@ -282,7 +284,10 @@ class CuroboMapPublisher(Node):
         mesh = self._mapper.extract_mesh(surface_only=True)
         if mesh.vertices is None or len(mesh.vertices) == 0:
             return None, None
-        return np.asarray(mesh.vertices, dtype=np.float32), np.asarray(mesh.faces)
+        # extract_mesh now returns cuda tensors; move to host before numpy.
+        verts = mesh.vertices.cpu().numpy() if hasattr(mesh.vertices, "cpu") else np.asarray(mesh.vertices)
+        faces = mesh.faces.cpu().numpy() if hasattr(mesh.faces, "cpu") else np.asarray(mesh.faces)
+        return verts.astype(np.float32), faces
 
     def _publish_map_cloud(self):
         """Publish the colored occupied-voxel cloud for RViz."""
